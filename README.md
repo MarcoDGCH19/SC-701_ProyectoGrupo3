@@ -24,7 +24,7 @@
 - Swagger
 
 ## Tipo de aplicación
-- **MPA** (Multi-Page Application)
+- **SPA** (Single-Page Application)
 
 ## Arquitectura utilizada
 - **MVC** (Modelo - Vista - Controlador)
