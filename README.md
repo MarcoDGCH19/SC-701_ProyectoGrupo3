@@ -2,7 +2,7 @@
 
 ## Integrantes
 - **Luis Emmanuel Cervantes Rubí** – Carné: FH22013088  
-- **Marco David Gozález Chaves** – Carné: FH22012212
+- **Marco David González Chaves** – Carné: FH22012212
 - **Diego José Ramírez Corrales** – Carné: FH22012601 
 
 ## Información de Git
