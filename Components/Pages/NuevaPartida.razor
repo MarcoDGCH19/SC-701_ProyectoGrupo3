@@ -1,0 +1,1074 @@
+﻿@page "/NuevaPartida"
+@using Connect4.Data
+@using Connect4.Services
+@using Microsoft.EntityFrameworkCore
+@using System.Text.Json
+@using Newtonsoft.Json
+@using System.Globalization
+
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+
+<div id="particles-js" style="width: 100vw; height: 100vh; position: fixed; top: 0; left: 0; z-index: -1;"></div>
+
+@if (MostrarPartidas)
+{
+    <div class="modal-backdrop fade show"></div>
+
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: transparent;">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Partidas Guardadas</h5>
+                    <button type="button" class="btn-close" aria-label="Close" @onclick="() => VolverAlMenu(1)"></button>
+                </div>
+                <div class="modal-body">
+                    @if (PartidasGuardadas.Any())
+                    {
+                        <div class="overflow-auto" style="max-height: 300px;">
+                            @foreach (var partida in PartidasGuardadas)
+                            {
+                                <div class="d-flex justify-content-between align-items-center mb-3 p-3 border rounded shadow-sm bg-light">
+                                    <div>
+                                        <strong>@FormatearFechaCompleta(partida.FechaCreacion)</strong>
+                                        <br />
+                                        <small class="text-muted">
+                                            vs <strong>@partida.Jugador2</strong> —
+                                            <span class="badge @(partida.Estado == EstadoPartida.Pendiente ? "bg-warning text-dark" : "bg-success")">
+                                                @partida.Estado
+                                            </span>
+                                        </small>
+                                    </div>
+                                    <button class="btn btn-sm btn-outline-success @(partida.Estado == EstadoPartida.Pendiente ? "btn-outline-primary" : "btn-outline-secondary")"
+                                            @onclick="() => CargarPartida(partida)">
+                                        @(partida.Estado == EstadoPartida.Pendiente ? "Continuar" : "Ver partida")
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="text-center py-3">
+                            <p class="text-muted">No hay partidas guardadas.</p>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-danger" @onclick="() => VolverAlMenu(1)">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+
+@if (PartidaNueva)
+{
+    <div class="modal-backdrop show"></div>
+    <div class="modal show d-block" tabindex="-1" style="display: block; background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">Configurar nueva partida</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => VolverAlMenu(0)"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-4">
+                        <h6>Jugador actual:</h6>
+                        <div class="d-flex align-items-center justify-content-between">
+                            <div class="d-flex align-items-center">
+                                @if (UsuarioActual?.FotoBase64 != null)
+                                {
+                                    <img src="data:image/png;base64,@UsuarioActual.FotoBase64"
+                                         class="rounded-circle me-3"
+                                         style="width: 40px; height: 40px; object-fit: cover;" />
+                                }
+                                <div>
+                                    <strong>@UsuarioActual?.Nombre</strong>
+                                    <div class="text-muted small">Puntuación: @UsuarioActual?.Marcador?.Puntuacion</div>
+                                </div>
+                            </div>
+                            <button class="btn btn-info" @onclick="MostrarPartidasGuardadas">Cargar Partida</button>
+                        </div>
+                    </div>
+
+                    <hr />
+
+                    <div class="mb-3">
+                        <h6>Seleccionar oponente:</h6>
+                        @if (UsuariosDisponibles.Count == 0)
+                        {
+                            <div class="alert alert-info">No hay otros jugadores disponibles</div>
+                        }
+                        else
+                        {
+                            <div class="list-group">
+                                <div style="max-height: 300px; overflow-y: auto;">
+                                    @foreach (var user in UsuariosDisponibles)
+                                    {
+                                        <button class="mt-1 list-group-item list-group-item-action rounded list-group-item-custom d-flex justify-content-between align-items-center @(OponenteSeleccionado?.Id == user.Id ? "active" : "")"
+                                                @onclick="() => SeleccionarOponente(user)">
+                                            <div class="d-flex align-items-center">
+                                                @if (user.FotoBase64 != null)
+                                                {
+                                                    <img src="data:image/png;base64,@user.FotoBase64"
+                                                         class="rounded-circle me-3"
+                                                         style="width: 40px; height: 40px; object-fit: cover;" />
+                                                }
+                                                <strong>@user.Nombre</strong>
+                                            </div>
+
+                                            <div class="d-flex align-items-center">
+                                                <span class="badge bg-success rounded-pill me-2">
+                                                    Puntuación: @user.Marcador?.Puntuacion
+                                                </span>
+                                                @if (OponenteSeleccionado?.Id == user.Id)
+                                                {
+                                                    <i class="bi bi-check-circle-fill"></i>
+                                                }
+                                            </div>
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+
+                        }
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button class="btn btn-danger" @onclick="() => VolverAlMenu(0)">Cancelar</button>
+                    <button class="btn btn-primary"
+                            disabled="@(OponenteSeleccionado == null)"
+                            @onclick="IniciarJuego">
+                        Iniciar partida
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+
+@if (JuegoIniciado)
+{
+    <div class="game-container mb-4">
+        @if (EstadoActualPartida == EstadoPartida.Pendiente)
+        {
+            <div class="status-card turn-indicator">
+                <div class="player-turn-display">
+                    <div class="player-indicator" style="background-color: @(JugadorActual == 1 ? "#0d6efd" : "#dc3545");"></div>
+                    @{
+                        var playerColor = JugadorActual == 1 ? "#0d6efd" : "#dc3545";
+                        var playerName = JugadorActual == 1 ? UsuarioActual?.Nombre : OponenteSeleccionado?.Nombre;
+                    }
+
+                    <span class="player-turn-text" style="--player-color: @playerColor">
+                        Turno de @playerName
+                    </span>
+                </div>
+                @if (!JuegoTerminado)
+                {
+                    <button class="btn btn-save" @onclick="GuardarPartidaPendiente">
+                        <i class="fas fa-save me-2"></i>Guardar Partida
+                    </button>
+                }
+
+            </div>
+
+            <div class="status-card score-indicator mt-3">
+                <div class="score-display">
+                    <span class="player-score">
+                        <strong>@UsuarioActual?.Nombre:</strong> @UsuarioActual?.Marcador?.Puntuacion
+                    </span>
+                    <span class="score-divider">|</span>
+                    <span class="player-score">
+                        <strong>@OponenteSeleccionado?.Nombre:</strong> @OponenteSeleccionado?.Marcador?.Puntuacion
+                    </span>
+                </div>
+                <button class="btn btn-restart" @onclick="ReiniciarJuego">
+                    <i class="fas fa-redo me-2"></i>Reiniciar Partida
+                </button>
+            </div>
+        }
+        else
+        {
+
+            <div class="status-card turn-indicator">
+                <div class="player-turn-display">
+                    <div class="player-indicator" style="background-color: #0d6efd;"></div>
+                    <span class="player-turn-text" style="--player-color: #0d6efd">
+                        Partida finalizada
+                    </span>
+                </div>
+            </div>
+
+            <div class="status-card score-indicator mt-3">
+                <div class="score-display">
+                    <span class="player-score">
+                        <strong>@UsuarioActual?.Nombre:</strong> @UsuarioActual?.Marcador?.Puntuacion
+                    </span>
+                    <span class="score-divider">|</span>
+                    <span class="player-score">
+                        <strong>@OponenteSeleccionado?.Nombre:</strong> @OponenteSeleccionado?.Marcador?.Puntuacion
+                    </span>
+                </div>
+                <button class="btn btn-restart" @onclick="ReiniciarJuegoYVolverAlMenu">
+                    <i class="fas fa-redo me-2"></i>Nueva partida
+                </button>
+            </div>
+        }
+    </div>
+}
+
+
+@if (MostrarGanador)
+{
+    <div class="winner-modal">
+        <div class="winner-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Resultado de la partida</h3>
+                <button type="button" class="close" @onclick="() => MostrarGanador = false" aria-label="Cerrar">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body text-center">
+
+                @if (Ganador == 0)
+                {
+                    <h3>¡Empate!</h3>
+                }
+                else
+                {
+                    <h3>¡@((Ganador == 1 ? UsuarioActual?.Nombre : OponenteSeleccionado?.Nombre)) ha ganado!</h3>
+                }
+
+                <div class="game-status">
+                    <div style="background-color: rgb(204, 0, 102); padding: 1rem 2.5rem; border-radius: 50px; display: flex; align-items: center; white-space: nowrap; gap: 10px;">
+                        <span class="ms-auto" style="color: #FFFFFF; font-size: 14px;">
+                            <strong>@UsuarioActual?.Nombre:</strong> @UsuarioActual?.Marcador?.Puntuacion
+                            <span class="mx-2">|</span>
+                            <strong>@OponenteSeleccionado?.Nombre:</strong> @OponenteSeleccionado?.Marcador?.Puntuacion
+                        </span>
+                    </div>
+                </div>
+
+                <button class="btn btn-success m-2" @onclick="ReiniciarJuegoYVolverAlMenu">Nueva Partida</button>
+                <button class="btn btn-primary m-2" @onclick="() => VolverAlMenu(0)">Volver al Menú</button>
+            </div>
+        </div>
+    </div>
+}
+
+
+
+
+<div class="game-container @(PartidaNueva ? "blur" : "")">
+    <div class="grid-header">
+        @foreach (var col in columnas)
+        {
+            <div class="grid-column-header" @onclick="() => ColumnaClicada(Array.IndexOf(columnas.ToArray(), col))">@col</div>
+        }
+    </div>
+
+    <div class="grid">
+        @for (int row = 0; row < Filas; row++)
+        {
+            <div class="grid-row">
+                @for (int col = 0; col < Columnas; col++)
+                {
+                    <div class="grid-cell @(EsCeldaGanadora(col, row) ? "ganadora" : "")">
+                        @if (Tablero[col, row] != 0)
+                        {
+                            <div class="chip @(Tablero[col, row] == 1 ? "blue-chip" : "red-chip")"></div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+
+        @if (Animando)
+        {
+            <div class="animation-container" style="left: @(ColumnaAnimacion * 80)px;">
+                <div class="chip @(JugadorActual == 1 ? "blue-chip" : "red-chip") falling-chip"></div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    #region init
+
+    #region Variables y variables de modelos
+    private bool PartidaNueva = true;
+    private bool JuegoIniciado = false;
+    private bool JuegoTerminado = false;
+    private bool MostrarGanador = false;
+    private List<string> columnas = new List<string> { "A", "B", "C", "D", "E", "F", "G" };
+
+    private ApplicationUser? UsuarioActual;
+    private List<ApplicationUser> UsuariosDisponibles = new();
+    private ApplicationUser? OponenteSeleccionado;
+
+    #endregion
+
+    #region Constantes y variables del juego
+    private const int Filas = 6;
+    private const int Columnas = 7;
+    private int[,] Tablero = new int[Columnas, Filas];
+    private int JugadorActual = 1; //FYI aqui el uuario 1 es azul y el oto es rojo
+    private int Ganador = 0;
+    private List<(int col, int row)> CeldasGanadoras = new();
+    private List<PartidaGuardada> PartidasGuardadas = new();
+    private bool MostrarPartidas = false;
+    private EstadoPartida EstadoActualPartida { get; set; } = EstadoPartida.Pendiente;
+    #endregion
+
+    #region Variables de animación
+    private bool Animando = false;
+    private int ColumnaAnimacion = -1;
+    private int FilaAnimacion = -1;
+    #endregion
+
+    #region Servicios
+    [Inject]
+    private AuthUserStateService AuthUserStateService { get; set; } = null!;
+    #endregion
+
+    #endregion
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarUsuarios();
+    }
+
+    private async Task CargarUsuarios()
+    {
+        var userId = await AuthUserStateService.GetUserIdAsync();
+
+        if (string.IsNullOrEmpty(userId))
+        {
+            Navigation.NavigateTo("/Account/Login");
+        }
+
+        using var db = DbFactory.CreateDbContext();
+        var UsuariosEnDB = await db.Users
+            .Include(u => u.Marcador)
+            .ToListAsync();
+
+        UsuarioActual = UsuariosEnDB.FirstOrDefault(u => u.Id == userId);
+        UsuariosDisponibles = UsuariosEnDB
+            .Where(u => u.Id != userId)
+            .OrderByDescending(u => u.Marcador?.Puntuacion ?? 0)
+            .ToList();
+    }
+
+    private void SeleccionarOponente(ApplicationUser user)
+    {
+        OponenteSeleccionado = user;
+    }
+
+    private void IniciarJuego()
+    {
+        EstadoActualPartida = EstadoPartida.Pendiente;
+        if (OponenteSeleccionado != null)
+        {
+            JuegoIniciado = true;
+            PartidaNueva = false;
+            ReiniciarTablero();
+        }
+    }
+
+    private void ReiniciarTablero()
+    {
+        Tablero = new int[Columnas, Filas];
+        JugadorActual = 1;
+        Ganador = 0;
+        MostrarGanador = false;
+        StateHasChanged();
+        CeldasGanadoras.Clear();
+    }
+
+    private async void ColumnaClicada(int columna)
+    {
+        if (!JuegoIniciado || Ganador != 0 || Animando) return;
+        int fila = -1;
+        for (int i = Filas - 1; i >= 0; i--)
+        {
+            if (Tablero[columna, i] == 0)
+            {
+                fila = i;
+                break;
+            }
+        }
+
+        if (fila == -1) return;
+
+        Animando = true;
+        ColumnaAnimacion = columna;
+        FilaAnimacion = fila;
+        StateHasChanged();
+        await Task.Delay(500);
+
+        Tablero[columna, fila] = JugadorActual;
+        Animando = false;
+
+        if (await VerificarGanador(columna, fila))
+        {
+            MostrarGanador = true;
+        }
+        else
+        {
+            JugadorActual = JugadorActual == 1 ? 2 : 1;
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task<bool> VerificarGanador(int col, int fila, bool soloVerificar = false)
+    {
+        int jugador = Tablero[col, fila];
+        CeldasGanadoras.Clear();
+
+        var direcciones = new List<(int dc, int df)>
+    {
+        (1, 0),   // Horizontal
+        (0, 1),   // Vertical
+        (1, 1),   // Diagonal principal
+        (1, -1)   // Diagonal inversa
+    };
+
+        foreach (var (dc, df) in direcciones)
+        {
+            List<(int, int)> celdas = new() { (col, fila) };
+
+            // Adelante
+            int c = col + dc, f = fila + df;
+            while (c >= 0 && c < Columnas && f >= 0 && f < Filas && Tablero[c, f] == jugador)
+            {
+                celdas.Add((c, f));
+                c += dc;
+                f += df;
+            }
+
+            // Atrás
+            c = col - dc; f = fila - df;
+            while (c >= 0 && c < Columnas && f >= 0 && f < Filas && Tablero[c, f] == jugador)
+            {
+                celdas.Add((c, f));
+                c -= dc;
+                f -= df;
+            }
+
+            if (celdas.Count >= 4)
+            {
+                CeldasGanadoras = celdas;
+                JuegoTerminado = true;
+                Ganador = jugador;
+
+                if (!soloVerificar)
+                {
+                    await ActualizarMarcadores(jugador);
+                    await GuardarPartidaFinalizada(jugador);
+                }
+
+                return true;
+            }
+        }
+
+        // Verificar empate
+        bool tableroLleno = true;
+        for (int c2 = 0; c2 < Columnas; c2++)
+        {
+            if (Tablero[c2, 0] == 0)
+            {
+                tableroLleno = false;
+                break;
+            }
+        }
+
+        if (tableroLleno)
+        {
+            JuegoTerminado = true;
+            Ganador = 0;
+
+            if (!soloVerificar)
+            {
+                await ActualizarMarcadores(0);
+                await GuardarPartidaFinalizada(0);
+            }
+
+            return true;
+        }
+
+
+        return false;
+    }
+
+    private async Task ActualizarMarcadores(int jugadorGanador)
+    {
+        using var db = DbFactory.CreateDbContext();
+
+        //marcadores
+        var usuarioActual = await db.Users
+            .Include(u => u.Marcador)
+            .FirstOrDefaultAsync(u => u.Id == UsuarioActual.Id);
+
+        var oponente = await db.Users
+            .Include(u => u.Marcador)
+            .FirstOrDefaultAsync(u => u.Id == OponenteSeleccionado.Id);
+
+        if (jugadorGanador == 1)
+        {
+            usuarioActual.Marcador.Puntuacion += 1;
+            usuarioActual.Marcador.Ganadas += 1;
+
+            oponente.Marcador.Puntuacion -= 1;
+            oponente.Marcador.Perdidas += 1;
+        }
+        else if (jugadorGanador == 2)
+        {
+            usuarioActual.Marcador.Puntuacion -= 1;
+            usuarioActual.Marcador.Perdidas += 1;
+
+            oponente.Marcador.Puntuacion += 1;
+            oponente.Marcador.Ganadas += 1;
+        }
+        else
+        {
+            usuarioActual.Marcador.Empatadas += 1;
+            oponente.Marcador.Empatadas += 1;
+        }
+
+        await db.SaveChangesAsync();
+        UsuarioActual = usuarioActual;
+        OponenteSeleccionado = oponente;
+    }
+
+    private void ReiniciarJuego()
+    {
+        MostrarGanador = false;
+        JuegoTerminado = false;
+        ReiniciarTablero();
+    }
+
+    private void ReiniciarJuegoYVolverAlMenu()
+    {
+        ReiniciarJuego();
+        PartidaNueva = true;
+        MostrarGanador = false;
+        MostrarPartidas = false;
+    }
+
+    private void VolverAlMenu(int backto)
+    {
+        if (backto == 1)
+
+        {
+            MostrarPartidas = false;
+            PartidaNueva = true;
+        }
+        else
+
+        {
+            Navigation.NavigateTo("/");
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var styleName = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "particleStyle");
+            if (string.IsNullOrWhiteSpace(styleName))
+            {
+                styleName = "PallaxParticles";
+            }
+            await JSRuntime.InvokeVoidAsync(styleName);
+        }
+    }
+
+    private bool EsCeldaGanadora(int col, int row)
+    {
+        return CeldasGanadoras.Contains((col, row));
+    }
+
+    private async Task GuardarPartidaFinalizada(int jugadorGanador)
+    {
+        using var db = DbFactory.CreateDbContext();
+
+        var partida = new PartidaGuardada
+        {
+            Jugador1 = UsuarioActual.Nombre,
+            Jugador2 = OponenteSeleccionado.Nombre,
+            OponenteId = OponenteSeleccionado.Id,
+            FechaCreacion = DateTime.Now,
+            FechaFinalizacion = DateTime.Now,
+            Estado = EstadoPartida.Finalizada,
+            TableroSerializado = JsonConvert.SerializeObject(Tablero),
+            UsuarioGuardoId = UsuarioActual.Id
+        };
+
+        db.PartidasGuardadas.Add(partida);
+        await db.SaveChangesAsync();
+    }
+
+    private async Task GuardarPartidaPendiente()
+    {
+        using var db = DbFactory.CreateDbContext();
+
+        var partidaPendiente = new PartidaGuardada
+        {
+            Jugador1 = UsuarioActual.Nombre,
+            Jugador2 = OponenteSeleccionado.Nombre,
+            OponenteId = OponenteSeleccionado.Id,
+            FechaCreacion = DateTime.Now,
+            Estado = EstadoPartida.Pendiente,
+            TableroSerializado = JsonConvert.SerializeObject(Tablero),
+            UsuarioGuardoId = UsuarioActual.Id
+        };
+
+        db.PartidasGuardadas.Add(partidaPendiente);
+        await db.SaveChangesAsync();
+    }
+
+    private async Task MostrarPartidasGuardadas()
+    {
+        using var db = DbFactory.CreateDbContext();
+
+        PartidasGuardadas = await db.PartidasGuardadas
+            .Where(p => p.UsuarioGuardoId == UsuarioActual.Id)
+            .OrderByDescending(p => p.FechaCreacion)
+            .ToListAsync();
+
+        MostrarPartidas = true;
+        PartidaNueva = false;
+    }
+
+    private async Task CargarPartida(PartidaGuardada partida)
+    {
+        Tablero = JsonConvert.DeserializeObject<int[,]>(partida.TableroSerializado);
+
+        using var db = DbFactory.CreateDbContext();
+
+        OponenteSeleccionado = await db.Users
+            .FirstOrDefaultAsync(u => u.Id == partida.OponenteId);
+
+        if (partida.Estado == EstadoPartida.Pendiente)
+        {
+            JuegoIniciado = true;
+            PartidaNueva = false;
+            MostrarPartidas = false;
+            Ganador = 0;
+            MostrarGanador = false;
+            UsuarioActual = await db.Users
+                .Include(u => u.Marcador)
+                .FirstOrDefaultAsync(u => u.Id == UsuarioActual.Id);
+            OponenteSeleccionado = await db.Users
+               .Include(u => u.Marcador)
+               .FirstOrDefaultAsync(u => u.Id == partida.OponenteId);
+        }
+        else
+        {
+            JuegoIniciado = true;
+            MostrarPartidas = false;
+            MostrarGanador = true;
+            EstadoActualPartida = partida.Estado;
+            UsuarioActual = await db.Users
+                .Include(u => u.Marcador)
+                .FirstOrDefaultAsync(u => u.Id == UsuarioActual.Id);
+            Ganador = partida.Jugador1 == UsuarioActual.Nombre ? 1 : 2;
+            OponenteSeleccionado = await db.Users
+                .Include(u => u.Marcador)
+                .FirstOrDefaultAsync(u => u.Id == partida.OponenteId);
+
+            for (int col = 0; col < Columnas; col++)
+            {
+                for (int row = 0; row < Filas; row++)
+                {
+                    if (Tablero[col, row] != 0)
+                    {
+                        bool hayGanador = await VerificarGanador(col, row, soloVerificar: true);
+                        if (hayGanador)
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private string FormatearFechaCompleta(DateTime fecha)
+    {
+        var cultura = new CultureInfo("es-ES");
+        string diaSemana = cultura.DateTimeFormat.GetDayName(fecha.DayOfWeek);
+        string mes = cultura.DateTimeFormat.GetMonthName(fecha.Month);
+
+        diaSemana = char.ToUpper(diaSemana[0]) + diaSemana[1..];
+        mes = char.ToLower(mes[0]) + mes[1..];
+
+        return $"{diaSemana} {fecha.Day} {mes} {fecha.Year} {fecha:hh:mm tt}";
+    }
+
+}
+
+<style>
+
+    .list-group-item-custom {
+        background-color: var(--accent-color);
+        color: white;
+        border: 1px solid transparent;
+        transition: background-color 0.3s, color 0.3s, border-color 0.3s;
+    }
+
+        .list-group-item-custom:hover {
+            background-color: var(--dark-bg);
+            border-color: #000000;
+            color: white;
+        }
+
+
+    .modal-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        z-index: 1040;
+        width: 100vw;
+        height: 100vh;
+        background-color: rgba(0,0,0,0.5);
+    }
+
+    .blur {
+        filter: blur(2px);
+        pointer-events: none;
+    }
+
+
+    .grid-header {
+        display: flex;
+        margin-bottom: 5px;
+    }
+
+    .grid-column-header {
+        width: 80px;
+        height: 30px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-weight: bold;
+        background: var(--dark-bg);
+        color: white;
+        cursor: pointer;
+        user-select: none;
+    }
+
+        .grid-column-header:hover {
+            background: #e56b6f;
+        }
+
+    .grid {
+        display: flex;
+        flex-direction: column;
+        border: 2px solid #333;
+        position: relative;
+    }
+
+    .grid-row {
+        display: flex;
+    }
+
+    .grid-cell {
+        width: 80px;
+        height: 80px;
+        border: 1px solid #ccc;
+        background-color: white;
+        cursor: pointer;
+        position: relative;
+        overflow: hidden;
+    }
+
+        .grid-cell:hover {
+            background-color: #e9ecef;
+        }
+
+    .chip {
+        width: 70px;
+        height: 70px;
+        border-radius: 50%;
+        margin: 5px;
+        position: relative;
+    }
+
+    .blue-chip {
+        background-color: #0d6efd;
+        box-shadow: inset 5px 5px 10px rgba(0,0,0,0.3);
+    }
+
+    .red-chip {
+        background-color: #dc3545;
+        box-shadow: inset 5px 5px 10px rgba(0,0,0,0.3);
+    }
+
+    .animation-container {
+        position: absolute;
+        top: 0;
+        width: 80px;
+        height: 100%;
+        display: flex;
+        justify-content: center;
+        pointer-events: none;
+        z-index: 10;
+    }
+
+    .falling-chip {
+        position: absolute;
+        width: 70px;
+        height: 70px;
+        border-radius: 50%;
+        margin: 5px;
+        animation: fall 0.5s ease-in forwards;
+        top: 0;
+        transform: translateY(0);
+    }
+
+    @@keyframes fall {
+        to {
+            transform: translateY( @(FilaAnimacion * 80 + 5)px);
+        }
+    }
+
+    .game-status {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 15px;
+        font-size: 1.2rem;
+        font-weight: bold;
+    }
+
+    .current-player-indicator {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        margin-right: 10px;
+    }
+
+    .winner-modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.7);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+    }
+
+    .winner-content {
+        background: white;
+        padding: 2rem;
+        border-radius: 10px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        overflow: hidden;
+        text-align: center;
+    }
+
+        .winner-content button {
+            margin: 10px;
+        }
+
+    .list-group-item.active {
+        background-color: #0d6efd;
+        border-color: #0d6efd;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+    .modal-body {
+        padding: 1rem;
+    }
+
+    .close {
+        background: none;
+        border: none;
+        font-size: 1.5rem;
+    }
+
+    .ganadora {
+        animation: brillar 0.8s infinite alternate;
+    }
+
+    @@keyframes brillar {
+        0% {
+            box-shadow: 0 0 20px 10px gold, 0 0 10px 5px orange;
+            transform: scale(0.5);
+        }
+
+        100% {
+            box-shadow: 0 0 40px 20px orange, 0 0 20px 10px gold;
+            transform: scale(1);
+        }
+    }
+
+    .game-container {
+        --column-width: 80px;
+        --column-count: 7;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin-top: 20px;
+        position: relative;
+    }
+
+    .status-card {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem 1.5rem;
+        border-radius: 50px;
+        width: calc(var(--column-count) * var(--column-width));
+    }
+
+    .score-indicator, .turn-indicator {
+        position: relative;
+        border-style: double;
+        border-width: 3px;
+        transition: all 0.3s ease;
+    }
+
+    .score-indicator {
+        background-color: var(--dark-bg);
+        border-color: #ff00aa;
+        box-shadow: 0 0 10px rgba(255, 0, 170, 0.5);
+        animation: pulse-shadow-score 2s infinite alternate;
+    }
+
+    .turn-indicator {
+        background-color: var(--accent-color);
+        border-color: #00ffe5;
+        box-shadow: 0 0 10px rgba(0, 255, 229, 0.5);
+        animation: pulse-shadow-turn 2s infinite alternate;
+    }
+
+    @@keyframes pulse-shadow-score {
+        0% {
+            box-shadow: 0 0 5px rgba(255, 0, 170, 0.3), 0 0 10px rgba(255, 0, 170, 0.2), 0 0 15px rgba(255, 0, 170, 0.1);
+        }
+
+        100% {
+            box-shadow: 0 0 15px rgba(255, 0, 170, 0.6), 0 0 25px rgba(255, 0, 170, 0.4), 0 0 35px rgba(255, 0, 170, 0.2);
+        }
+    }
+
+    @@keyframes pulse-shadow-turn {
+        0% {
+            box-shadow: 0 0 5px rgba(0, 255, 229, 0.3), 0 0 10px rgba(0, 255, 229, 0.2), 0 0 15px rgba(0, 255, 229, 0.1);
+        }
+
+        100% {
+            box-shadow: 0 0 15px rgba(0, 255, 229, 0.6), 0 0 25px rgba(0, 255, 229, 0.4), 0 0 35px rgba(0, 255, 229, 0.2);
+        }
+    }
+
+    .player-turn-display {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .player-indicator {
+        width: 15px;
+        height: 15px;
+        border-radius: 50%;
+    }
+
+    .player-turn-text {
+        place-self: center;
+        background: linear-gradient(90deg, var(--player-color) 0%, rgba(255, 255, 255, 0.8) 50%, var(--player-color) 100%);
+        background-size: 200% auto;
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        font: 900 clamp(1.5em, 1.5vw, 4em) 'Exo', sans-serif;
+        animation: wave 2.5s linear infinite;
+        line-height: 1.2;
+        padding: 0.2em 0;
+    }
+
+    @@keyframes wave {
+        to {
+            background-position: 200% center;
+        }
+    }
+
+    .player-turn-text:hover {
+        animation-play-state: paused;
+    }
+
+    .player-score {
+        font-size: 0.9rem;
+    }
+
+    .score-display {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        color: white;
+    }
+
+    .score-divider {
+        opacity: 0.6;
+    }
+
+    .btn-save {
+        background-color: var(--success-color);
+        color: white;
+        font-weight: 500;
+        border: none;
+        border-radius: 50px;
+        padding: 0.5rem 1.25rem;
+    }
+
+    .btn-restart {
+        background-color: var(--accent-color);
+        color: white;
+        font-weight: 500;
+        border: none;
+        border-radius: 50px;
+        padding: 0.5rem 1.25rem;
+        margin-left: 1rem;
+    }
+
+        .btn-save:hover, .btn-restart:hover {
+            background-color: var(--primary-color);
+            transform: translateY(-1px);
+            color: white;
+        }
+
+    @@media (max-width: 768px) {
+        .status-card {
+            flex-direction: column;
+            gap: 1rem;
+            padding: 1rem;
+            border-radius: 20px;
+        }
+
+        .btn-restart {
+            margin-left: 0;
+            margin-top: 0.5rem;
+        }
+    }
+
+</style>

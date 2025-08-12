@@ -1,0 +1,214 @@
+﻿@page "/ranking"
+@using Connect4.Data
+@using Connect4.Models
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@inject UserManager<ApplicationUser> UserManager
+@inject ApplicationDbContext Context
+@inject IJSRuntime JSRuntime
+
+<div id="particles-js" style="width: 100vw; height: 100vh; position: fixed; top: 0; left: 0; z-index: -1;"></div>
+
+<h3 class="ranking-title">
+    <i class="bi bi-trophy-fill"></i> Ranking de Jugadores
+</h3>
+
+@if (usersWithScores == null)
+{
+    <p>Cargando datos...</p>
+}
+else
+{
+    <div class="table-container">
+        <table class="ranking-table">
+            <thead>
+                <tr>
+                    <th>Posición</th>
+                    <th>Identificación</th>
+                    <th>Nombre</th>
+                    <th>Marcador</th>
+                    <th>Ganadas</th>
+                    <th>Perdidas</th>
+                    <th>Empatadas</th>
+                </tr>
+            </thead>
+            <tbody>
+                @{
+                    var orderedUsers = usersWithScores
+                    .OrderByDescending(u => u.Marcador?.Puntuacion ?? 0)
+                    .ToList();
+                }
+
+                @for (int i = 0; i < orderedUsers.Count; i++)
+                {
+                    var user = orderedUsers[i];
+                    <tr class="ranking-row @(user.Marcador?.Puntuacion >= 0 ? "positive-score" : "negative-score")">
+                        <td>@(i + 1)</td>
+                        <td>@user.Identificacion</td>
+                        <td>@user.Nombre</td>
+                        <td>@(user.Marcador?.Puntuacion ?? 0)</td>
+                        <td>@(user.Marcador?.Ganadas ?? 0)</td>
+                        <td>@(user.Marcador?.Perdidas ?? 0)</td>
+                        <td>@(user.Marcador?.Empatadas ?? 0)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+
+@code {
+    private List<ApplicationUser> usersWithScores = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        usersWithScores = await Context.Users
+            .Include(u => u.Marcador)
+            .Where(u => u.Marcador != null)
+            .ToListAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var styleName = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "particleStyle");
+            if (string.IsNullOrWhiteSpace(styleName))
+            {
+                styleName = "PallaxParticles";
+            }
+            await JSRuntime.InvokeVoidAsync(styleName);
+        }
+    }
+}
+
+<style>
+    .ranking-title {
+        color: white;
+        text-align: center;
+        margin-bottom: 1.5rem;
+        font-weight: 600;
+    }
+
+    .table-container {
+        max-width: 1000px;
+        margin: 0 auto;
+        overflow-x: auto;
+    }
+
+    .ranking-table {
+        width: 100%;
+        border-collapse: collapse;
+        background-color: var(--white-color);
+        border-radius: 10px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    }
+
+        .ranking-table thead {
+            background-color: var(--dark-bg);
+            color: var(--white-color);
+        }
+
+        .ranking-table th {
+            padding: 1rem;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        .ranking-table td {
+            padding: 0.75rem 1rem;
+            text-align: center;
+            border-bottom: 1px solid #eee;
+        }
+
+        .ranking-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .ranking-table tr:hover {
+            background-color: rgba(109, 89, 122, 0.05);
+        }
+
+
+    .ranking-table tbody tr:nth-child(1) .position {
+        color: gold;
+        font-size: 1.1em;
+    }
+
+    .ranking-table tbody tr:nth-child(2) .position {
+        color: silver;
+    }
+
+    .ranking-table tbody tr:nth-child(3) .position {
+        color: #cd7f32;
+    }
+
+    @@media (max-width: 768px) {
+        .ranking-table {
+            display: block;
+        }
+
+            .ranking-table thead {
+                display: none;
+            }
+
+            .ranking-table tbody,
+            .ranking-table tr,
+            .ranking-table td {
+                display: block;
+                width: 100%;
+            }
+
+            .ranking-table tr {
+                margin-bottom: 1rem;
+                border-radius: 8px;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            }
+
+            .ranking-table td {
+                text-align: right !important;
+                padding-left: 50%;
+                position: relative;
+                border-bottom: 1px solid #eee;
+            }
+
+                .ranking-table td::before {
+                    content: attr(data-label);
+                    position: absolute;
+                    left: 1rem;
+                    width: calc(50% - 1rem);
+                    padding-right: 1rem;
+                    text-align: left;
+                    font-weight: 600;
+                    color: var(--accent-color);
+                }
+                .ranking-table td:nth-child(1)::before {
+                    content: "Posición";
+                }
+
+                .ranking-table td:nth-child(2)::before {
+                    content: "Identificación";
+                }
+
+                .ranking-table td:nth-child(3)::before {
+                    content: "Nombre";
+                }
+
+                .ranking-table td:nth-child(4)::before {
+                    content: "Marcador";
+                }
+
+                .ranking-table td:nth-child(5)::before {
+                    content: "Ganadas";
+                }
+
+                .ranking-table td:nth-child(6)::before {
+                    content: "Perdidas";
+                }
+
+                .ranking-table td:nth-child(7)::before {
+                    content: "Empatadas";
+                }
+    }
+</style>

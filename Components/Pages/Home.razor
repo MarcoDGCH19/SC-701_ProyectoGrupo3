@@ -1,0 +1,28 @@
+﻿@page "/"
+@inject IJSRuntime JSRuntime
+@inject NavigationManager NavigationManager
+<div id="particles-js" style="width: 100vw; height: 100vh; position: fixed; top: 0; left: 0; z-index: -1;"></div>
+
+<div class="home-container">
+    <div class="main-content">
+        <div class="shadow-dance-container">
+            <img src="images/Logo.png"
+                 alt="Logo del equipo"
+                 class="team-logo" />
+        </div>
+
+        <div class="exclusive-banner">
+            <p class="exclusive-text">PROGRAMACIÓN WEB AVANZADA</p>
+            <div class="pulse-dot"></div>
+        </div>
+
+        <div class="cta-buttons">
+          <AuthorizeView>
+            <Authorized>
+                    <button class="btn-primary winner-display" onclick="window.location.href='NuevaPartida'">COMENZAR</button>
+            </Authorized>
+          </AuthorizeView>
+
+        </div>
+    </div>
+</div>

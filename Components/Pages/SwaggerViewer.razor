@@ -1,0 +1,24 @@
+﻿@page "/swagger-viewer"
+@using Connect4.Services
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager Navigation
+
+<iframe src="/swagger"
+style="width:100%; height:90vh; border:none;">
+</iframe>
+
+@code{
+
+	[Inject]
+	private AuthUserStateService AuthUserStateService { get; set; } = null!;
+
+    protected override async Task OnInitializedAsync()
+    {
+		var userId = await AuthUserStateService.GetUserIdAsync();
+
+		if (string.IsNullOrEmpty(userId))
+		{
+			Navigation.NavigateTo("/Account/Login");
+		}
+    }
+}
